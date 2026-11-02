@@ -32,6 +32,7 @@ from .render import fonts
 from .render.collage import KEY_LIMIT, NO_LIMIT, gather_entries, render_collage, selected_species
 from .render.page import NEW, Edges, day_ordinal
 from .render.plate import effective_margin, render_plate
+from .render.scene import Scene, pick
 from .source import Source, Species
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ class Context:
     spotlight: bool
     margin: Edges  # of the short side; the settings are percents
     textured: bool = True
+    scene: Scene | None = None  # the day's picture, for a collage
 
     def perches(self):
         return perches_for(self.images_dir, self.style)
@@ -108,6 +110,7 @@ def context(
         spotlight=settings.spotlight,
         margin=Edges(*(m / 100 for m in settings.margins(panel))),
         textured=textured,
+        scene=pick(settings.scene, images_dir.parent / "scenes", resolution, day_ordinal()),
     )
 
 
@@ -242,6 +245,7 @@ def _collage(ctx: Context) -> Image.Image:
         ctx.margin,
         ctx.name_key,
         spotlit,
+        ctx.scene,
     )
 
 
@@ -353,6 +357,7 @@ def state_key(ctx: Context) -> tuple:
         ctx.font_key,
         ctx.label_size,
         ctx.layout if mode.windowed else None,
+        ctx.scene.path if ctx.scene and mode.windowed else None,
         ctx.name_key if mode.windowed else None,
         # The plate clamps to its own margin, so a nudge under it must not repaint.
         ctx.margin if mode.windowed else effective_margin(ctx.margin),

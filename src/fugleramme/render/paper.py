@@ -32,6 +32,7 @@ HALO_SMOOTH = 1  # blocks either side
 HALO_SHIFT = 6  # levels, cap
 HALO_FADE = 8  # steps, ramp to nothing
 HALO_NEAR = 12  # levels from the halo's tone that count toward its local tone
+LIFT_SOFTEN = 0.8  # gaussian sigma (px) on the edge of a sprite with its halo lifted
 
 
 @functools.cache
@@ -104,6 +105,26 @@ def _reach(seed: np.ndarray, allowed: np.ndarray, steps: int) -> np.ndarray:
         depth[nxt & ~grown & allowed] = step
         grown = nxt
     return depth
+
+
+def lift_halo(sprite: Image.Image) -> Image.Image:
+    """The sprite with its scan-paper halo made transparent, for a page that is
+    not paper. The halo is found as `process_sprite` finds it: paper-like pixels
+    reachable from the transparent edge. A softened alpha stops the cut looking
+    jagged on a busy picture."""
+    arr = np.array(sprite)
+    rgb = arr[..., :3].astype(np.int16)
+    opaque = arr[..., 3] > 24
+    ring = (_box_sum((~opaque).astype(np.int32), 4) > 0) & opaque
+    if ring.sum() <= 50:
+        return sprite
+    paper = np.median(rgb[ring], axis=0)
+    sat = rgb.max(2) - rgb.min(2)
+    paper_px = opaque & (np.abs(rgb - paper).max(2) < 50) & (sat < 55) & (rgb.max(2) > 160)
+    arr[_reach(~opaque, paper_px, HALO_REACH) > 0, 3] = 0
+    alpha = Image.fromarray(arr[..., 3]).filter(ImageFilter.GaussianBlur(LIFT_SOFTEN))
+    arr[..., 3] = np.minimum(np.asarray(alpha), arr[..., 3])
+    return Image.fromarray(arr, "RGBA")
 
 
 def process_sprite(

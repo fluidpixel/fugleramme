@@ -56,7 +56,8 @@ from .page import (
     text_mask,
     trim,
 )
-from .paper import PAD, process_sprite
+from .paper import PAD, lift_halo, process_sprite
+from .scene import Scene, place
 from .sizes import SIZE_EXPONENT, bird_centre, mass_of, span_ratio
 
 log = logging.getLogger(__name__)
@@ -432,6 +433,7 @@ def render_collage(
     margin: Edges = _DEFAULT_EDGES,
     name_key: bool = False,
     spotlight: str | None = None,
+    scene: Scene | None = None,
 ) -> Image.Image:
     """Composite the given (name, image) entries into a tightly packed collage.
 
@@ -443,10 +445,14 @@ def render_collage(
     margin: bare paper along each edge, as fractions of the short side.
     name_key: with names on, number the birds and list the names in a key.
     spotlight: the entry drawn large in the middle, the rest packed round it.
+    scene: a picture to draw on instead of paper, a bird on each of its slots. It
+        takes the page whole: no layout, margin, names, key or spotlight.
     """
-    canvas = blank(resolution, textured)
-
     kept = [(name, path) for name, path in entries if path is not None]
+    if scene:
+        return _draw_scene(scene.background(resolution), kept, scene)
+
+    canvas = blank(resolution, textured)
     if not kept:
         draw_perch(canvas, perches, day_ordinal(), textured)
         return canvas
@@ -545,6 +551,42 @@ def _draw_birds(
         proc = process_sprite(art, corner, textured=textured)
         canvas.paste(proc, corner, proc)
     return placed, used_px
+
+
+def _feet(bird: Image.Image) -> tuple[float, int]:
+    """Where a cut-out stands: the middle of its lowest tenth, and its bottom."""
+    alpha = np.asarray(bird.getchannel("A")) > _ALPHA_CUTOFF
+    rows = np.nonzero(alpha.any(axis=1))[0]
+    bottom = int(rows[-1]) + 1
+    band = alpha[max(int(rows[0]), bottom - max(1, (bottom - int(rows[0])) // 10)) : bottom]
+    return float(band.nonzero()[1].mean()), bottom
+
+
+def _draw_scene(canvas: Image.Image, kept: list[tuple[str, Path]], scene: Scene) -> Image.Image:
+    """Each bird on its slot, sized by mass up to what the slot allows. Lower
+    slots are drawn last, so a bird nearer the viewer is in front."""
+    if not kept:
+        return canvas
+    names = [name for name, _ in kept]
+    arts = [trim(path) for _, path in kept]
+    ratios = [span_ratio(path, art.size) for (_, path), art in zip(kept, arts, strict=True)]
+    weights = _size_weights(names)
+    # The heaviest bird just fits the roomiest slot; the rest follow by mass.
+    base = max(s.span for s in scene.slots) * min(canvas.size) / max(weights)
+    perches = place(scene, canvas.size, names, [base * w for w in weights])
+    for perch in sorted(perches, key=lambda p: p.feet[1]):
+        i = perch.index
+        art = _scaled(arts[i], max(1, round(perch.span * ratios[i])), _flip(names[i]))
+        bird = lift_halo(art)
+        foot_x, bottom = _feet(bird)
+        x, y = round(perch.feet[0] - foot_x), round(perch.feet[1] - bottom)
+        # a bird near an edge slides back on rather than being cut off
+        at = (
+            min(max(0, x), max(0, canvas.width - bird.width)),
+            min(max(0, y), max(0, canvas.height - bird.height)),
+        )
+        canvas.paste(bird, at, bird)
+    return canvas
 
 
 def _spotlit(

@@ -127,6 +127,9 @@ class Settings:
     style: str = ""
     # How the collage packs its birds; a plate has one bird and ignores it.
     layout: str = DEFAULT_LAYOUT
+    # A folder under assets/scenes/ of pictures to sit the birds on, in place of the
+    # paper; empty is the paper. Only a collage uses it.
+    scene: str = ""
     # The collage with the latest bird drawn large in the middle (#185).
     spotlight: bool = False
     auto_update: bool = False
@@ -361,6 +364,7 @@ def _coerce(raw: dict, base: Settings | None = None) -> Settings:
         ranking=_one_of(str(raw.get("ranking", d.ranking)), RANKINGS, d.ranking),
         style=_style(raw, d.style),
         layout=_one_of(str(raw.get("layout", d.layout)), LAYOUTS, d.layout),
+        scene=str(raw.get("scene", d.scene)).strip().replace("/", ""),
         spotlight=_as_bool(raw.get("spotlight"), d.spotlight),
         auto_update=_as_bool(raw.get("auto_update"), d.auto_update),
         show_names=_as_bool(raw.get("show_names"), d.show_names),
