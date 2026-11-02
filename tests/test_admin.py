@@ -9,7 +9,7 @@ import json
 import re
 
 import pytest
-from PIL import features
+from PIL import Image, features
 
 from fugleramme import fake, languages, modes
 from fugleramme.birdweather import BirdWeatherSource
@@ -943,3 +943,21 @@ def test_the_wifi_setup_is_offered_only_on_the_pis_own_service(monkeypatch):
     field = admin._wifi_field(Settings(hotspot_password="birdsbirds"), ready, True)
     assert 'name="hotspot_password" value="birdsbirds"' in field
     assert "Join Fugleramme-A215 to use it" in field
+
+
+def test_the_scene_field_appears_only_once_a_picture_exists(tmp_path):
+    scenes = tmp_path / "scenes"
+    assert admin._scene_field(Settings(), scenes) == ""
+    (scenes / "garden-party").mkdir(parents=True)
+    Image.new("RGB", (16, 9)).save(scenes / "garden-party" / "tree.png")
+    (scenes / "garden-party" / "tree.json").write_text(
+        '{"slots": [{"x": 0.5, "y": 0.5, "span": 0.2}]}'
+    )
+    field = admin._scene_field(Settings(scene="garden-party/tree"), scenes)
+    assert 'value="auto"' in field and 'value="">Paper' in field and ">Tree<" in field
+    assert 'value="garden-party/tree" selected' in field
+    assert 'name="scene_scale"' in field and 'value="1"' in field
+    assert 'value="1.5"' in admin._scene_field(Settings(scene_scale=1.5), scenes)
+    # a picture that has gone shows as the automatic choice the frame falls back to
+    assert 'value="auto" selected' in admin._scene_field(Settings(scene="gone"), scenes)
+    assert admin.form_changes({"scene": ["garden-party/tree"]}) == {"scene": "garden-party/tree"}

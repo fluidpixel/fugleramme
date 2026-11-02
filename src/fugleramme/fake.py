@@ -27,6 +27,7 @@ import re
 import secrets
 import threading
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from http.cookies import SimpleCookie
@@ -60,6 +61,15 @@ NON_BIRDS = {
 }
 
 HEARD = SPECIES + list(NON_BIRDS)
+
+# Heard only with --australian, for trying artwork the Norwegian set has none of.
+# English only: the other languages fall back to it.
+AUSTRALIAN = {
+    "Cacatua galerita": "Sulphur-crested Cockatoo",
+    "Trichoglossus moluccanus": "Rainbow Lorikeet",
+    "Corvus coronoides": "Australian Raven",
+    "Gymnorhina tibicen": "Australian Magpie",
+}
 
 # Two languages for those species, as BirdNET-Go's own dictionaries give them:
 # lowercase in Norwegian, titled in English. code -> (display name, {species: name})
@@ -173,7 +183,11 @@ class Detection:
 
 
 def _common(scientific: str) -> str:
-    return NAMES["en"][1].get(scientific) or NON_BIRDS.get(scientific, "")
+    return (
+        NAMES["en"][1].get(scientific)
+        or NON_BIRDS.get(scientific)
+        or AUSTRALIAN.get(scientific, "")
+    )
 
 
 def generate(count: int, seed: int | None = None, heard: list[str] = HEARD) -> list[Detection]:
@@ -199,12 +213,12 @@ def locales(every_language: bool = False) -> dict[str, str]:
     return listed | _NO_DICTIONARY | (every if every_language else {})
 
 
-def species_all(locale: str) -> dict[str, Any]:
+def species_all(locale: str, heard: Iterable[str] = HEARD) -> dict[str, Any]:
     """`/species/all`: every species in `locale`, English where it has no name.
     "Human vocal" comes back as its own scientific name, as upstream's labels do."""
     listed = {listed: code for code, listed in _LISTED_AS.items()}
     names = LABELS.get(locale) or NAMES.get(listed.get(locale, locale), ("", {}))[1]
-    common = {sci: names.get(sci) or _common(sci) or sci for sci in sorted(HEARD)}
+    common = {sci: names.get(sci) or _common(sci) or sci for sci in sorted(heard)}
     rows = [
         {"label": f"{sci}_{name}", "scientificName": sci, "commonName": name}
         for sci, name in common.items()
@@ -424,7 +438,7 @@ def make_handler(
             elif route == f"{API}/settings/birdnet":
                 self._json(200, {"locale": locale})
             elif route == f"{API}/species/all":
-                self._json(200, species_all(locale))
+                self._json(200, species_all(locale, {*HEARD, *(r.scientific_name for r in rows)}))
             elif route.startswith(f"{API}/species/dictionary/"):
                 self._dictionary(route.rsplit("/", 1)[1])
             else:
@@ -794,9 +808,17 @@ def main() -> None:
         action="store_true",
         help="be BirdWeather's GraphQL instead, serving two stations",
     )
+    parser.add_argument(
+        "--australian",
+        action="store_true",
+        help="also hear a cockatoo, a lorikeet, a raven and a magpie (not with --birdweather)",
+    )
     args = parser.parse_args()
+    if args.australian and args.birdweather:
+        parser.error("--australian has no BirdWeather species to serve")
 
-    rows = generate(args.count, args.seed, BIRDWEATHER_HEARD if args.birdweather else HEARD)
+    heard = HEARD + list(AUSTRALIAN) if args.australian else HEARD
+    rows = generate(args.count, args.seed, BIRDWEATHER_HEARD if args.birdweather else heard)
     if args.birdweather:  # a third heard at the other station, so the two make one page
         rows = [replace(row, station=OTHER_STATION_ID) if row.id % 3 == 0 else row for row in rows]
     httpd = serve(

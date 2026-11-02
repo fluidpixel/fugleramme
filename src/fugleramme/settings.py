@@ -32,6 +32,7 @@ from .modes import DEFAULT_MODE, MODES
 from .render.collage import DEFAULT_MARGIN, DEFAULT_RANKING, NO_LIMIT, RANKINGS
 from .render.fonts import DEFAULT_FONT, DEFAULT_LABEL_SIZE, FONTS, LABEL_SIZES
 from .render.packing import DEFAULT_LAYOUT, LAYOUTS
+from .render.scene import AUTO
 from .source import (
     BIRDNET_GO,
     BIRDWEATHER,
@@ -87,6 +88,7 @@ REFRESH_OPTIONS = (
 
 # A quarter off each edge already leaves half the page, so margin stops here.
 MARGIN_CEILING = 25
+SCENE_SCALE_MIN, SCENE_SCALE_MAX = 0.5, 3.0
 
 
 def lookback_order(hours: float) -> float:
@@ -127,9 +129,13 @@ class Settings:
     style: str = ""
     # How the collage packs its birds; a plate has one bird and ignores it.
     layout: str = DEFAULT_LAYOUT
-    # A folder under assets/scenes/ of pictures to sit the birds on, in place of the
-    # paper; empty is the paper. Only a collage uses it.
-    scene: str = ""
+    # The picture the collage sits its birds on, in place of the paper: a path under
+    # assets/scenes/ without the suffix, "auto" for a new one each day, or empty for
+    # the paper. Only a collage uses it, and with no pictures there it is the paper.
+    scene: str = AUTO
+    # How much bigger than its slots give, a scene draws its birds: a factor of 1 is
+    # as the slots are tagged.
+    scene_scale: float = 1.0
     # The collage with the latest bird drawn large in the middle (#185).
     spotlight: bool = False
     auto_update: bool = False
@@ -244,6 +250,13 @@ def _as_hours(value, default: float) -> float:
     except (TypeError, ValueError):
         return default
     return int(hours) if hours == int(hours) else hours
+
+
+def _as_scale(value, default: float) -> float:
+    try:
+        return round(max(SCENE_SCALE_MIN, min(SCENE_SCALE_MAX, float(value))), 2)
+    except (TypeError, ValueError):
+        return default
 
 
 def _as_bool(value, default: bool) -> bool:
@@ -364,7 +377,8 @@ def _coerce(raw: dict, base: Settings | None = None) -> Settings:
         ranking=_one_of(str(raw.get("ranking", d.ranking)), RANKINGS, d.ranking),
         style=_style(raw, d.style),
         layout=_one_of(str(raw.get("layout", d.layout)), LAYOUTS, d.layout),
-        scene=str(raw.get("scene", d.scene)).strip().replace("/", ""),
+        scene=str(raw.get("scene", d.scene)).strip(),
+        scene_scale=_as_scale(raw.get("scene_scale"), d.scene_scale),
         spotlight=_as_bool(raw.get("spotlight"), d.spotlight),
         auto_update=_as_bool(raw.get("auto_update"), d.auto_update),
         show_names=_as_bool(raw.get("show_names"), d.show_names),

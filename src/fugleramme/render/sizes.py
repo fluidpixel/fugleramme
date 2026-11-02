@@ -58,6 +58,10 @@ class Geometry(NamedTuple):
 
     box: tuple[float, float, float, float]
     cut: tuple[int, int]
+    # Where the feet stand, as fractions of the same cut-out, for a scene to plant
+    # the bird by. Optional: a long tail hanging below the feet puts the lowest
+    # point of the plate nowhere near them.
+    feet: tuple[float, float] | None = None
 
 
 _boxes: dict[Path, tuple[float, dict[str, Geometry]]] = {}
@@ -83,9 +87,19 @@ def _entry(value: object) -> Geometry | None:
         return None
     if width <= 0 or height <= 0:
         return None
-    if 0.0 <= x0 < x1 <= 1.0 and 0.0 <= y0 < y1 <= 1.0:
-        return Geometry((x0, y0, x1, y1), (width, height))
-    return None
+    if not (0.0 <= x0 < x1 <= 1.0 and 0.0 <= y0 < y1 <= 1.0):
+        return None
+    return Geometry((x0, y0, x1, y1), (width, height), _feet(value.get("feet")))
+
+
+def _feet(value: object) -> tuple[float, float] | None:
+    if not isinstance(value, list) or len(value) != 2:
+        return None
+    try:
+        x, y = (float(number) for number in value)
+    except (TypeError, ValueError):
+        return None
+    return (x, y) if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 else None
 
 
 def _geometry(folder: Path) -> dict[str, Geometry]:
@@ -145,6 +159,12 @@ def span_ratio(path: Path, size: tuple[int, int]) -> float:
     width, height = size
     span = max((box[2] - box[0]) * width, (box[3] - box[1]) * height)
     return max(width, height) / span if span > 0 else 1.0
+
+
+def feet_of(path: Path, size: tuple[int, int]) -> tuple[float, float] | None:
+    """Where the feet stand on a plate, as fractions of it, if its record says."""
+    found = geometry_of(path)
+    return found.feet if found is not None and found.cut == size else None
 
 
 def bird_centre(path: Path, size: tuple[int, int]) -> tuple[float, float]:

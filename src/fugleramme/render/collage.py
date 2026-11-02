@@ -27,7 +27,7 @@ import hashlib
 import logging
 import math
 import threading
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
@@ -36,7 +36,7 @@ from typing import NamedTuple
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from ..names import canonical, drawable_keys, image_for, normalize
+from ..names import canonical, choose, drawable_keys, image_for, normalize, tags_of
 from ..source import Source
 from . import fonts, packing
 from .page import (
@@ -56,9 +56,9 @@ from .page import (
     text_mask,
     trim,
 )
-from .paper import PAD, lift_halo, process_sprite
-from .scene import Scene, place
-from .sizes import SIZE_EXPONENT, bird_centre, mass_of, span_ratio
+from .paper import PAD, process_sprite
+from .scene import BACKGROUND, Scene, grade, place, recede
+from .sizes import SIZE_EXPONENT, bird_centre, feet_of, mass_of, span_ratio
 
 log = logging.getLogger(__name__)
 
@@ -434,6 +434,9 @@ def render_collage(
     name_key: bool = False,
     spotlight: str | None = None,
     scene: Scene | None = None,
+    variants: Callable[[str], list[Path]] | None = None,
+    copies: Mapping[str, int] | None = None,
+    scene_scale: float = 1.0,
 ) -> Image.Image:
     """Composite the given (name, image) entries into a tightly packed collage.
 
@@ -447,10 +450,16 @@ def render_collage(
     spotlight: the entry drawn large in the middle, the rest packed round it.
     scene: a picture to draw on instead of paper, a bird on each of its slots. It
         takes the page whole: no layout, margin, names, key or spotlight.
+    variants: every plate a species has, so a scene's slot can pick the pose it suits.
+    copies: how many of a species a scene seats, one where it is not named. A species'
+        extra birds only take slots left once every species has one.
+    scene_scale: how many times the span its slots give a scene draws its birds.
     """
     kept = [(name, path) for name, path in entries if path is not None]
     if scene:
-        return _draw_scene(scene.background(resolution), kept, scene)
+        return _draw_scene(
+            scene.background(resolution), kept, scene, variants, copies or {}, scene_scale
+        )
 
     canvas = blank(resolution, textured)
     if not kept:
@@ -562,24 +571,68 @@ def _feet(bird: Image.Image) -> tuple[float, int]:
     return float(band.nonzero()[1].mean()), bottom
 
 
-def _draw_scene(canvas: Image.Image, kept: list[tuple[str, Path]], scene: Scene) -> Image.Image:
-    """Each bird on its slot, sized by mass up to what the slot allows. Lower
-    slots are drawn last, so a bird nearer the viewer is in front."""
-    if not kept:
+def _planted(
+    bird: Image.Image, plate: Path, cut: tuple[int, int], flipped: bool
+) -> tuple[float, int]:
+    """Where a bird, drawn from `plate` trimmed to `cut`, stands: the feet its record
+    gives, else the lowest of the bird."""
+    feet = feet_of(plate, cut)
+    if feet is None:
+        return _feet(bird)
+    x = (1 - feet[0] if flipped else feet[0]) * bird.width
+    return x, round(feet[1] * bird.height)
+
+
+def _draw_scene(
+    canvas: Image.Image,
+    kept: list[tuple[str, Path]],
+    scene: Scene,
+    variants: Callable[[str], list[Path]] | None,
+    copies: Mapping[str, int],
+    scale: float,
+) -> Image.Image:
+    """Each bird on a slot its plate suits, sized by mass up to what the slot
+    allows, facing the middle of the page. The plate is picked first, from those the
+    scene has a slot for. A species heard a lot has more than one bird, each in a
+    plate of its own pick. Lower slots are drawn last, so a bird nearer the viewer is
+    in front."""
+    slots = scene.slots_on(canvas.size, scale)
+    if not kept or not slots:
         return canvas
-    names = [name for name, _ in kept]
-    arts = [trim(path) for _, path in kept]
-    ratios = [span_ratio(path, art.size) for (_, path), art in zip(kept, arts, strict=True)]
-    weights = _size_weights(names)
+    species = [name for name, _ in kept]
+    weight = dict(zip(species, _size_weights(species), strict=True))
+    birds = [(name, path, n) for name, path in kept for n in range(copies.get(name, 1))]
+    # A slot of no kind takes any plate, so then there is nothing to narrow to.
+    offered = None if any(not s.kind for s in slots) else frozenset(s.kind for s in slots)
+    plates = [
+        choose(
+            (variants(name) if variants else []) or [path],
+            name if n == 0 else f"{name}#{n}",
+            day_ordinal(),
+            offered,
+        )
+        or path
+        for name, path, n in birds
+    ]
     # The heaviest bird just fits the roomiest slot; the rest follow by mass.
-    base = max(s.span for s in scene.slots) * min(canvas.size) / max(weights)
-    perches = place(scene, canvas.size, names, [base * w for w in weights])
+    base = max(s.span for s in slots) * min(canvas.size) / max(weight.values())
+    spans = [base * weight[name] for name, _, _ in birds]
+    # Every species' first bird is seated before anyone's second.
+    keys = [f"{n}/{name}" for name, _, n in birds]
+    perches = place(slots, canvas.size, keys, spans, [tags_of(path) for path in plates])
     for perch in sorted(perches, key=lambda p: p.feet[1]):
-        i = perch.index
-        art = _scaled(arts[i], max(1, round(perch.span * ratios[i])), _flip(names[i]))
-        bird = lift_halo(art)
-        foot_x, bottom = _feet(bird)
-        x, y = round(perch.feet[0] - foot_x), round(perch.feet[1] - bottom)
+        i = perch.bird
+        art = trim(plates[i])
+        ratio = span_ratio(plates[i], art.size)
+        # Plates are taken to face right, so a bird right of the middle turns round.
+        face_left = perch.feet[0] > canvas.width / 2
+        bird = _scaled(art, max(1, round(perch.span * ratio)), face_left)
+        bird = grade(bird, scene.period)
+        if perch.depth == BACKGROUND:
+            bird = recede(bird)
+        foot_x, bottom = _planted(bird, plates[i], art.size, face_left)
+        x = round(perch.feet[0] - foot_x)
+        y = round(perch.feet[1] - bottom + perch.sink * bird.height)
         # a bird near an edge slides back on rather than being cut off
         at = (
             min(max(0, x), max(0, canvas.width - bird.width)),
@@ -799,6 +852,22 @@ def _rank(ranking: str):
     if ranking == RANK_MOST_HEARD:
         return lambda pair: (-pair[1], pair[0])
     return lambda pair: (pair[1], pair[0])  # both rarest, and last heard
+
+
+SCENE_COPIES = 3  # the most birds a scene seats of one species
+
+
+def copies_for(count: int) -> int:
+    """How many of a species a scene seats for the detections it has had: one, and
+    another for each tenfold, so 10 gives two and 100 three."""
+    return min(SCENE_COPIES, 1 + int(math.log10(max(count, 1))))
+
+
+def species_copies(source: Source, hours: float) -> dict[str, int]:
+    """`copies_for` each species the window heard."""
+    return {
+        name: copies_for(count) for name, count in _by_species(source.species_since(hours)).items()
+    }
 
 
 def _by_species(counts: Iterable[tuple[str, int]]) -> dict[str, int]:

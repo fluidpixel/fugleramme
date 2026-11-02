@@ -514,6 +514,7 @@ const lookback = document.getElementById("lookback");
 const limit = document.getElementById("limit");
 const ranking = document.getElementById("ranking");
 const layout = document.getElementById("layout");
+const scene = document.getElementById("scene");  // absent until a scene set is added
 function dim(el, on) {
   el.querySelectorAll("select, input").forEach((c) => { c.disabled = !on; });
   el.classList.toggle("off", !on);
@@ -527,6 +528,7 @@ function syncMode() {
   dim(lookback, on);
   dim(limit, on);
   dim(layout, on);
+  if (scene) dim(scene, on);
   // Nothing to rank while every bird the window heard is already on the page.
   const capped = form.querySelector("input[name=limit_mode]:checked")?.value === "some";
   form.querySelector("input[name=species_limit]").disabled = !(on && capped);  // after dim(limit)

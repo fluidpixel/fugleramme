@@ -26,6 +26,10 @@ Each style folder carries its own ATTRIBUTION.md naming the works it draws on,
 and a manifest.json giving each single file the work it was cut from
 (`source_of`) and a link to the plate itself (`origin_of`). A style filled by
 hand has no manifest and simply has no provenance to show.
+
+A variant may also say what the bird is doing, in dotted tags before the suffix:
+"turdus-merula-2.ground.webp" is a blackbird on the ground. Only a scene's slots
+ask (`choose`); the paper collage wears any variant, tagged or not.
 """
 
 from __future__ import annotations
@@ -41,6 +45,9 @@ BIRDS = "birds"
 PERCHES = "perches"
 MANIFEST = "manifest.json"  # a style's record: "<file>.webp" -> {"source", "url"}
 ALIASES = REPO_ROOT / "assets" / "birdnet_aliases.json"
+
+# What a bird in a plate is doing, and what a scene slot offers it.
+KINDS = ("tree", "bush", "perch", "ground", "flying")
 
 # Preference order. Anything added must be a format PIL opens and `dither` can quantize.
 SUFFIXES = (".webp", ".png")
@@ -104,6 +111,16 @@ def artwork_keys(scientific_name: str) -> tuple[str, ...]:
     return (key, legacy) if legacy else (key,)
 
 
+def _base(stem: str) -> str:
+    """A stem without its pose tags: "turdus-merula-2.ground" -> "turdus-merula-2"."""
+    return stem.split(".", 1)[0]
+
+
+def tags_of(path: Path) -> frozenset[str]:
+    """The poses a file's name gives it. Empty is untagged, which suits any slot."""
+    return frozenset(t for t in path.stem.split(".")[1:] if t in KINDS)
+
+
 def _by_stem(folder: Path, pattern: str = "*") -> dict[str, Path]:
     """Matching artwork keyed on stem. One entry per stem: a folder holding both
     formats for a bird would otherwise draw it twice and hold it as two variants."""
@@ -163,21 +180,21 @@ def variants_for(scientific_name: str, images_dir: Path, style: str) -> list[Pat
     one must not hide the plates filed under the current name.
 
     Numbered-only matching keeps a species key (e.g. tetrao-urogallus) from
-    picking up a hybrid file (tetrao-urogallus-x-lagopus-lagopus.webp).
+    picking up a hybrid file (tetrao-urogallus-x-lagopus-lagopus.webp). Pose
+    tags are not part of the number: "<key>-2.ground" is the second variant.
     """
     if not style:
         return []
     folder = images_dir / style / BIRDS
     variants: list[Path] = []
     for key in artwork_keys(scientific_name):
-        numbered = re.compile(rf"{re.escape(key)}-(\d+)")
-        base = [path] if (path := _artwork(folder, key)) else []
-        rest = [
-            (m, p)
-            for stem, p in _by_stem(folder, f"{key}-*").items()
-            if (m := numbered.fullmatch(stem))
+        numbered = re.compile(rf"{re.escape(key)}(?:-(\d+))?")
+        found = [
+            (int(m.group(1) or 1), stem, p)
+            for stem, p in _by_stem(folder, f"{key}*").items()
+            if (m := numbered.fullmatch(_base(stem)))
         ]
-        variants += base + [p for _m, p in sorted(rest, key=lambda mp: int(mp[0].group(1)))]
+        variants += [p for _n, _stem, p in sorted(found)]
     return variants
 
 
@@ -193,22 +210,37 @@ def drawable_keys(images_dir: Path, style: str) -> set[str]:
     """
     if not style:
         return set()
-    return {normalize(_NUMBERED.sub("", stem)) for stem in _by_stem(images_dir / style / BIRDS)}
+    return {
+        normalize(_NUMBERED.sub("", _base(stem))) for stem in _by_stem(images_dir / style / BIRDS)
+    }
 
 
-def image_for(scientific_name: str, images_dir: Path, style: str, day: int) -> Path | None:
-    """The artwork this species is wearing on `day`, or None if it has none.
+def choose(
+    variants: list[Path], scientific_name: str, day: int, kinds: frozenset[str] | None = None
+) -> Path | None:
+    """The variant a species wears on `day`, or None if it has none.
 
     A hash of the name and the date, so the panel and the kiosk agree, a
     restart changes nothing, and a bird in the window all week still varies.
     Hashed together rather than stepped by the day, which would pair two birds'
     variants the same way forever. blake2b, as hash() is salted per process.
+
+    `kinds` are the slots a scene offers: the pick is among the variants that
+    have one to sit on, untagged ones counting as suiting every slot. If none do,
+    it is among them all, and the scene leaves the bird off.
     """
-    variants = variants_for(scientific_name, images_dir, style)
-    if not variants:
+    pool = variants
+    if kinds is not None:
+        pool = [p for p in variants if not tags_of(p) or tags_of(p) & kinds] or variants
+    if not pool:
         return None
     seed = hashlib.blake2b(f"{scientific_name}/{day}".encode(), digest_size=4).digest()
-    return variants[int.from_bytes(seed) % len(variants)]
+    return pool[int.from_bytes(seed) % len(pool)]
+
+
+def image_for(scientific_name: str, images_dir: Path, style: str, day: int) -> Path | None:
+    """The artwork this species is wearing on `day`, or None if it has none."""
+    return choose(variants_for(scientific_name, images_dir, style), scientific_name, day)
 
 
 def perches_for(images_dir: Path, style: str) -> list[Path]:

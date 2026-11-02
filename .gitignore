@@ -42,3 +42,4 @@ tools/platereview/review*/
 
 # scene pictures are the owner's own
 assets/scenes/*/
+assets/artwork/custom/

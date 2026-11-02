@@ -46,6 +46,7 @@ from ..names import available_styles, image_for, normalize, origin_of, source_of
 from ..render.collage import KEY_LIMIT, NO_LIMIT, RANKINGS
 from ..render.fonts import FONTS, LABEL_SIZES, face, load, needs_shaping
 from ..render.packing import LAYOUTS
+from ..render.scene import AUTO, names as scene_names
 from ..settings import (
     DEFAULT_LIMIT,
     LIMIT_CEILING,
@@ -53,6 +54,8 @@ from ..settings import (
     MARGIN_CEILING,
     REFRESH_OPTIONS,
     ROTATIONS,
+    SCENE_SCALE_MAX,
+    SCENE_SCALE_MIN,
     Settings,
     lookback_order,
     merged,
@@ -1085,6 +1088,41 @@ def _layout_field(settings: Settings) -> str:
     )
 
 
+def _scene_label(ident: str, idents: list[str]) -> str:
+    """A picture's name, with its folder when another picture shares the name."""
+    *folders, stem = ident.split("/")
+    clash = sum(i.rsplit("/", 1)[-1] == stem for i in idents) > 1
+    return " / ".join(_display_name(part) for part in ([*folders, stem] if clash else [stem]))
+
+
+def _scene_field(settings: Settings, scenes_dir: Path) -> str:
+    """The picture the collage sits its birds on, in place of the paper: one picked
+    each day, none, or a particular one. Offered only once a picture has been added;
+    dimmed with the layout, which a scene takes over."""
+    idents = scene_names(scenes_dir)
+    if not idents:
+        return ""
+    options = [(AUTO, "Automatic - a new one each day"), ("", "Paper")] + [
+        (i, _scene_label(i, idents)) for i in idents
+    ]
+    # A picture that has gone is shown as what the frame falls back to.
+    chosen = settings.scene if settings.scene in dict(options) else AUTO
+    rows = "".join(
+        f'<option value="{html.escape(value)}"{" selected" if value == chosen else ""}>'
+        f"{html.escape(label)}</option>"
+        for value, label in options
+    )
+    hint = "A picture to sit the birds on, in place of the paper. Only the collage uses one."
+    size_hint = "How much bigger than the scene's slots give, the birds are drawn. 1 is as tagged."
+    return (
+        f'<div id="scene"><label><span>Scene {_hint(hint)}</span>'
+        f'<select name="scene">{rows}</select></label>'
+        f"<label><span>Bird scale {_hint(size_hint)}</span>"
+        f'<input type="number" name="scene_scale" min="{SCENE_SCALE_MIN:g}"'
+        f' max="{SCENE_SCALE_MAX:g}" step="0.1" value="{settings.scene_scale:g}"></label></div>'
+    )
+
+
 def page(
     ctx: modes.Context,
     settings: Settings,
@@ -1163,6 +1201,7 @@ def page(
         lookbacks=_lookbacks(settings),
         limit_field=_species_field(settings),
         layout_field=_layout_field(settings),
+        scene_field=_scene_field(settings, ctx.images_dir.parent / "scenes"),
         names_field=_names_field(settings, languages, names_failure, face_notes),
         style_field=_radio_field(
             "Artwork style",

@@ -27,9 +27,16 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 from .languages import STATION, Drawable, Namer, english_name, station_locale
-from .names import drawable_keys, image_for, normalize, perches_for, resolve
+from .names import drawable_keys, image_for, normalize, perches_for, resolve, variants_for
 from .render import fonts
-from .render.collage import KEY_LIMIT, NO_LIMIT, gather_entries, render_collage, selected_species
+from .render.collage import (
+    KEY_LIMIT,
+    NO_LIMIT,
+    gather_entries,
+    render_collage,
+    selected_species,
+    species_copies,
+)
 from .render.page import NEW, Edges, day_ordinal
 from .render.plate import effective_margin, render_plate
 from .render.scene import Scene, pick
@@ -69,7 +76,8 @@ class Context:
     spotlight: bool
     margin: Edges  # of the short side; the settings are percents
     textured: bool = True
-    scene: Scene | None = None  # the day's picture, for a collage
+    scene: Scene | None = None  # the picture the collage sits on, if any
+    scene_scale: float = 1.0
 
     def perches(self):
         return perches_for(self.images_dir, self.style)
@@ -110,7 +118,14 @@ def context(
         spotlight=settings.spotlight,
         margin=Edges(*(m / 100 for m in settings.margins(panel))),
         textured=textured,
-        scene=pick(settings.scene, images_dir.parent / "scenes", resolution, day_ordinal()),
+        scene_scale=settings.scene_scale,
+        scene=pick(
+            settings.scene,
+            images_dir.parent / "scenes",
+            resolution,
+            day_ordinal(),
+            datetime.now().astimezone().hour,
+        ),
     )
 
 
@@ -218,7 +233,17 @@ def _collage_key(ctx: Context) -> tuple:
     # places across it while the set of species heard sits still.
     species = tuple(_selected(ctx))
     spotlit = _spotlit(ctx)
-    return (species, spotlit if spotlit in species else None)
+    # A scene seats more of a species heard a lot, so the count of seats is on the key.
+    seats = _copies(ctx)
+    return (
+        species,
+        spotlit if spotlit in species else None,
+        tuple(seats.get(n, 1) for n in species),
+    )
+
+
+def _copies(ctx: Context) -> dict[str, int]:
+    return species_copies(ctx.source, ctx.lookback_hours) if ctx.scene else {}
 
 
 def _collage(ctx: Context) -> Image.Image:
@@ -246,6 +271,9 @@ def _collage(ctx: Context) -> Image.Image:
         ctx.name_key,
         spotlit,
         ctx.scene,
+        lambda name: variants_for(name, ctx.images_dir, ctx.style),
+        _copies(ctx),
+        ctx.scene_scale,
     )
 
 
@@ -358,6 +386,7 @@ def state_key(ctx: Context) -> tuple:
         ctx.label_size,
         ctx.layout if mode.windowed else None,
         ctx.scene.path if ctx.scene and mode.windowed else None,
+        ctx.scene_scale if ctx.scene and mode.windowed else None,
         ctx.name_key if mode.windowed else None,
         # The plate clamps to its own margin, so a nudge under it must not repaint.
         ctx.margin if mode.windowed else effective_margin(ctx.margin),

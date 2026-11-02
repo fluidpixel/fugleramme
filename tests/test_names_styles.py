@@ -6,12 +6,14 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from fugleramme.names import (
     BIRDS,
     MANIFEST,
     PERCHES,
     available_styles,
+    choose,
     drawable_keys,
     image_for,
     origin_of,
@@ -259,3 +261,26 @@ def test_a_broken_manifest_is_not_fatal(tmp_path):
     _make(tmp_path, "classic", "turdus-merula")
     (tmp_path / "classic" / MANIFEST).write_text("{ not json")
     assert source_of(tmp_path / "classic" / BIRDS / "turdus-merula.png") == ""
+
+
+def test_pose_tags_are_not_part_of_the_variant_number(tmp_path):
+    birds = tmp_path / "classic" / "birds"
+    birds.mkdir(parents=True)
+    for stem in ("turdus-merula", "turdus-merula-2.ground", "turdus-merula-3.perch.tree"):
+        (birds / f"{stem}.webp").write_bytes(b"x")
+    found = variants_for("Turdus merula", tmp_path, "classic")
+    assert [p.stem for p in found] == [
+        "turdus-merula",
+        "turdus-merula-2.ground",
+        "turdus-merula-3.perch.tree",
+    ]
+    assert drawable_keys(tmp_path, "classic") == {"turdus-merula"}
+
+
+def test_choose_takes_a_plate_the_scene_has_a_slot_for(tmp_path):
+    plain, ground = Path("a.webp"), Path("a-2.ground.webp")
+    for day in range(20):
+        assert choose([plain, ground], "Turdus merula", day, frozenset({"tree"})) == plain
+        assert choose([ground], "Turdus merula", day, frozenset({"ground"})) == ground
+        assert choose([ground], "Turdus merula", day, frozenset({"tree"})) == ground
+    assert {choose([plain, ground], "Turdus merula", d) for d in range(20)} == {plain, ground}
