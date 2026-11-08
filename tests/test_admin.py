@@ -83,6 +83,15 @@ def test_the_config_blob_carries_everything_admin_js_reads(tmp_path, source):
     assert used and used <= set(blob)
 
 
+def test_a_listed_species_is_named_in_the_language_then_in_latin(tmp_path):
+    english = languages.Namer("en", languages.NONE, {"en": {"Pica pica": "eurasian magpie"}}, ())
+    html = admin.species_html([("Pica pica", "gould", ""), ("Corvus cornix", None, "")], english)
+    assert ">Eurasian magpie (Pica pica)</a>" in html
+    assert ">Corvus cornix</a>" in html  # no name in the language, so no repeat
+    latin = namer("sci", "", tmp_path)
+    assert ">Pica pica</a>" in admin.species_html([("Pica pica", "gould", "")], latin)
+
+
 def test_a_species_with_no_artwork_is_marked_rather_than_dropped(tmp_path):
     name_of = namer("sci", "", tmp_path)
     html = admin.species_html([("Pica pica", "gould", ""), ("Corvus cornix", None, "")], name_of)

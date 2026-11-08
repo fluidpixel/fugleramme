@@ -398,10 +398,17 @@ def _species_li(scientific: str, label: str, source: str | None, url: str) -> st
     return f"<li>{name} <small>{plate}</small></li>"
 
 
+def _named(scientific: str, name_of: Namer) -> str:
+    """The name in the configured language, then the scientific one in brackets,
+    unless the name is the scientific one already."""
+    label = name_of.inline(scientific)
+    return label if label == scientific else f"{label} ({html.escape(scientific)})"
+
+
 def species_html(species: list[tuple[str, str | None, str]], name_of: Namer) -> str:
     return (
         "".join(
-            _species_li(name, name_of.inline(name), source, url) for name, source, url in species
+            _species_li(name, _named(name, name_of), source, url) for name, source, url in species
         )
         or '<li class="empty">none yet</li>'
     )
