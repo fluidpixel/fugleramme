@@ -423,7 +423,10 @@ def subjects(ctx: Context) -> list[str]:
     return mode_of(ctx.mode).subjects(ctx)
 
 
-_cache: tuple[tuple, bytes] | None = None
+# A page per state: the kiosk and the traditional collage alternate, and one slot
+# would have each re-render the other's.
+_CACHED_PAGES = 4
+_cache: dict[tuple, bytes] = {}
 _cache_lock = threading.Lock()
 
 
@@ -431,12 +434,13 @@ def png_bytes(ctx: Context) -> bytes:
     """The current page as PNG, for the HTTP endpoints. The lock is held across
     the render so concurrent kiosk requests wait for one render instead of each
     doing their own."""
-    global _cache
     with _cache_lock:
         key = state_key(ctx)
-        if _cache is not None and _cache[0] == key:
-            return _cache[1]
+        if key in _cache:
+            return _cache[key]
         buffer = io.BytesIO()
         render(ctx).save(buffer, format="PNG")
-        _cache = (key, buffer.getvalue())
-        return _cache[1]
+        while len(_cache) >= _CACHED_PAGES:
+            del _cache[next(iter(_cache))]
+        _cache[key] = buffer.getvalue()
+        return _cache[key]

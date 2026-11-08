@@ -407,6 +407,12 @@ def make_handler(
                 note(f"Detector unavailable, serving the last kiosk page ({exc})", True)
             self._send_cached(last_page, "image/png")
 
+        def _traditional_png(self):
+            """The kiosk's page in the classic plates on paper: the settings as saved,
+            but for the style and the scene."""
+            settings = replace(store.get(), style="classic", scene="")
+            self._send_cached(modes.png_bytes(self._context(settings)), "image/png")
+
         def _preview_png(self):
             # The panel's page where there is one, else the kiosk's.
             settings = replace(self._edited(), web_lock=True)
@@ -513,6 +519,7 @@ def make_handler(
 
         ROUTES: ClassVar[dict] = {
             "/collage.png": _page_png,
+            "/collage-traditional.png": _traditional_png,
             "/frame.e6": _e6,
             "/frame.png": _frame_png,
             "/preview.png": _preview_png,
