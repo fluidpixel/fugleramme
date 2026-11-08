@@ -4,10 +4,11 @@ A scene is a picture under `assets/scenes/` (in the folder itself or a folder on
 level down, which only groups them) with a JSON file of the same name that tags its
 slots:
 
-    {"slots": [{"x": 0.42, "y": 0.31, "span": 0.18, "kind": "tree", "depth": "background"}, ...]}
+    {"slots": [{"x": 0.42, "y": 0.31, "span": 0.18, "kind": "tree", "depth": "background", "size": 0.8}, ...]}
 
 `x` and `y` are where a bird's feet land, as fractions of the picture; `span` is
-the most of the picture's short side a bird sitting there may take. A page fills
+the most of the picture's short side a bird sitting there may take, and the optional
+`size` how much of its size a bird keeps there (0.7 for a spot further back). A page fills
 with the picture it is given, cropping the overflow about the middle; slots cropped
 off are not used. Left to `AUTO`, it takes the picture whose shape is closest to its
 own, and pictures within `ASPECT_TOLERANCE` of the closest one take turns, one per day.
@@ -47,11 +48,14 @@ FOREGROUND, BACKGROUND = "foreground", "background"
 DEPTHS = (FOREGROUND, BACKGROUND)
 # A bird far off is paler and greyer, as things are through air.
 RECEDE_COLOR = 0.7  # of its saturation
-RECEDE_BRIGHTNESS = 1.5
+# And by day lighter, in the haze; at night there is none and far off is darker.
+RECEDE_BRIGHTNESS = {"dusk": 1.2, "night": 0.85}
+RECEDE_BRIGHTNESS_DAY = 1.5
 ASPECT_TOLERANCE = 0.03  # of width over height, for two pictures to count as one shape
 # A bird takes a slot only if the slot is at least this much of its own size, while
 # a roomier one is free: a goose does not perch on a fence post.
 MIN_FIT = 0.7
+SIZE_MAX = 2.0  # of a bird's own size, the most a slot may ask for
 
 
 class Slot(NamedTuple):
@@ -61,6 +65,7 @@ class Slot(NamedTuple):
     kind: str = ""  # one of `names.KINDS`; empty takes any bird
     depth: str = FOREGROUND
     sink: float = SINK  # of a bird's height, how far its feet go below the point
+    size: float = 1.0  # of the bird's size here: under 1 for a spot further back
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,7 @@ class Scene:
                 s.kind,
                 s.depth,
                 s.sink,
+                s.size,
             )
             for s in self.slots
         )
@@ -173,6 +179,7 @@ def _slots(path: Path) -> tuple[Slot, ...] | None:
                 str(s.get("kind", "")).strip().lower(),
                 str(s.get("depth", FOREGROUND)).strip().lower(),
                 float(s.get("sink", SINK)),
+                float(s.get("size", 1.0)),
             )
             for s in raw
         )
@@ -186,6 +193,7 @@ def _slots(path: Path) -> tuple[Slot, ...] | None:
         and s.kind in ("", *KINDS)
         and s.depth in DEPTHS
         and 0 <= s.sink <= SINK_MAX
+        and 0 < s.size <= SIZE_MAX
         for s in slots
     )
     return slots if slots and valid else None
@@ -341,7 +349,7 @@ def place(
         Perch(
             i,
             (slots[s].x * width, slots[s].y * height),
-            min(spans[i], slots[s].span * short),
+            min(spans[i], slots[s].span * short) * slots[s].size,
             slots[s].depth,
             slots[s].sink,
         )
@@ -349,11 +357,12 @@ def place(
     ]
 
 
-def recede(bird: Image.Image) -> Image.Image:
-    """The bird as it looks in the background: less saturated and brighter. The
-    enhancers work on the colour alone, as brightening an RGBA image would
-    scale its alpha with it."""
+def recede(bird: Image.Image, period: str = "") -> Image.Image:
+    """The bird as it looks in the background: less saturated, and brighter in the
+    haze of the day or darker at night. The enhancers work on the colour alone, as
+    brightening an RGBA image would scale its alpha with it."""
+    brightness = RECEDE_BRIGHTNESS.get(period, RECEDE_BRIGHTNESS_DAY)
     rgb = ImageEnhance.Color(bird.convert("RGB")).enhance(RECEDE_COLOR)
-    rgb = ImageEnhance.Brightness(rgb).enhance(RECEDE_BRIGHTNESS)
+    rgb = ImageEnhance.Brightness(rgb).enhance(brightness)
     rgb.putalpha(bird.getchannel("A"))
     return rgb

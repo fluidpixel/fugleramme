@@ -629,7 +629,7 @@ def _draw_scene(
         bird = _scaled(art, max(1, round(perch.span * ratio)), face_left)
         bird = grade(bird, scene.period)
         if perch.depth == BACKGROUND:
-            bird = recede(bird)
+            bird = recede(bird, scene.period)
         foot_x, bottom = _planted(bird, plates[i], art.size, face_left)
         x = round(perch.feet[0] - foot_x)
         y = round(perch.feet[1] - bottom + perch.sink * bird.height)

@@ -108,6 +108,12 @@ def test_a_background_bird_is_paler_and_greyer_with_its_edge_untouched():
     assert [far.getpixel((x, 0))[3] for x in (0, 1)] == [255, 90]
 
 
+def test_a_background_bird_is_darker_at_night_and_milder_at_dusk():
+    bird = Image.new("RGBA", (1, 1), (200, 40, 40, 255))
+    day, dusk, night = (sum(recede(bird, p).getpixel((0, 0))[:3]) for p in ("day", "dusk", "night"))
+    assert night < sum((200, 40, 40)) < dusk < day
+
+
 def test_slot_depth_is_read_and_a_bad_one_voids_the_picture(tmp_path):
     _set(tmp_path / "s", "a", (160, 90), [{"x": 0.5, "y": 0.5, "span": 0.2, "depth": "background"}])
     assert pick(AUTO, tmp_path, (1920, 1080), 0, 12).slots[0].depth == "background"
@@ -193,3 +199,14 @@ def test_a_plate_record_can_say_where_the_feet_stand(tmp_path):
         (tmp_path / "s" / "geometry.json").write_text(json.dumps({"birds/x.png": entry}))
         assert feet_of(plate, (10, 40)) == expected
     assert feet_of(plate, (10, 50)) is None  # drawn on another crop: not to be trusted
+
+
+def test_a_slot_size_scales_the_bird_on_it_and_is_checked(tmp_path):
+    slots = [{"x": 0.5, "y": 0.5, "span": 0.2, "size": 0.7}]
+    _set(tmp_path / "s", "a", (160, 90), slots)
+    scene = pick(AUTO, tmp_path, (1920, 1080), 0, 12)
+    assert scene.slots[0].size == 0.7
+    (perch,) = place(scene.slots_on((1920, 1080)), (1920, 1080), ["a"], [100.0], [frozenset()])
+    assert perch.span == pytest.approx(70.0)
+    _set(tmp_path / "t", "a", (160, 90), [{"x": 0.5, "y": 0.5, "span": 0.2, "size": 0}])
+    assert pick(AUTO, tmp_path / "t", (1920, 1080), 0, 12) is None
