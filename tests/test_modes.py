@@ -69,6 +69,31 @@ def _ctx(source, images, tmp_path, mode, panel=False, **overrides):
     )
 
 
+def test_only_the_shipped_style_is_always_paper(tmp_path, images, source, monkeypatch):
+    scenes = images.parent / "scenes"
+    scenes.mkdir(exist_ok=True)
+    Image.new("RGB", (16, 9)).save(scenes / "a.png")
+    (scenes / "a.json").write_text('{"slots": [{"x": 0.5, "y": 0.5, "span": 0.2}]}')
+    # the artwork folder's sibling holds the scenes
+    art = images.parent / "artwork"
+    art.mkdir(exist_ok=True)
+    for style in ("classic", "custom"):
+        (art / style / "birds").mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (12, 9), (40, 40, 40, 255)).save(
+            art / style / "birds" / "parus-major.png"
+        )
+    for style, expected in (("classic", None), ("custom", "a")):
+        for scene in ("", "auto", "a"):
+            ctx = modes.context(
+                source(rows=[]),
+                art,
+                Settings(style=style, scene=scene),
+                namer("sci", "", tmp_path),
+                (400, 300),
+            )
+            assert (ctx.scene.path.stem if ctx.scene else None) == expected
+
+
 def test_every_mode_is_offered_and_the_default_is_the_collage():
     assert modes.DEFAULT_MODE == "collage"
     assert list(modes.MODES) == ["collage", "latest", "arrival"]

@@ -129,13 +129,15 @@ class Settings:
     style: str = ""
     # How the collage packs its birds; a plate has one bird and ignores it.
     layout: str = DEFAULT_LAYOUT
-    # The picture the collage sits its birds on, in place of the paper: a path under
-    # assets/scenes/ without the suffix, "auto" for a new one each day, or empty for
-    # the paper. Only a collage uses it, and with no pictures there it is the paper.
+    # The picture the collage sits its birds on: a path under assets/scenes/ without
+    # the suffix, or "auto" (also empty) for a new one each day. Only a collage uses
+    # it, never with the shipped style, and with no pictures there it is the paper.
     scene: str = AUTO
     # How much bigger than its slots give, a scene draws its birds: a factor of 1 is
     # as the slots are tagged.
     scene_scale: float = 1.0
+    # Marks each slot of the scene on the page, to place them by eye.
+    scene_slots: bool = False
     # The collage with the latest bird drawn large in the middle (#185).
     spotlight: bool = False
     auto_update: bool = False
@@ -379,6 +381,7 @@ def _coerce(raw: dict, base: Settings | None = None) -> Settings:
         layout=_one_of(str(raw.get("layout", d.layout)), LAYOUTS, d.layout),
         scene=str(raw.get("scene", d.scene)).strip(),
         scene_scale=_as_scale(raw.get("scene_scale"), d.scene_scale),
+        scene_slots=_as_bool(raw.get("scene_slots"), d.scene_slots),
         spotlight=_as_bool(raw.get("spotlight"), d.spotlight),
         auto_update=_as_bool(raw.get("auto_update"), d.auto_update),
         show_names=_as_bool(raw.get("show_names"), d.show_names),

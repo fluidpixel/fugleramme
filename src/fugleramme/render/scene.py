@@ -46,6 +46,7 @@ STARTS = ((5, "morning"), (10, "day"), (16, "dusk"), (19, "night"))
 AUTO = "auto"  # for `pick`: a new picture each day
 FOREGROUND, BACKGROUND = "foreground", "background"
 DEPTHS = (FOREGROUND, BACKGROUND)
+FLYING = "flying"  # the slot kind, and plate tag, for a bird in the air
 # A bird far off is paler and greyer, as things are through air.
 RECEDE_COLOR = 0.7  # of its saturation
 # And by day lighter, in the haze; at night there is none and far off is darker.
@@ -93,6 +94,14 @@ class Scene:
             fitted = image.convert("RGB").resize(full, Image.Resampling.LANCZOS)
         box = (round(left), round(top), round(left) + page[0], round(top) + page[1])
         return fitted.crop(box)
+
+    def in_picture(self, page: tuple[int, int], slot: Slot) -> tuple[float, float]:
+        """Where a slot seen on `page` is on the picture, as the JSON tags it."""
+        fill, left, top = self._cover(page)
+        return (
+            (slot.x * page[0] + left) / (self.size[0] * fill),
+            (slot.y * page[1] + top) / (self.size[1] * fill),
+        )
 
     def slots_on(self, page: tuple[int, int], scale: float = 1.0) -> tuple[Slot, ...]:
         """The slots that land on a page of `page`, as fractions of the page, their
@@ -219,7 +228,7 @@ def _pictures(scenes_dir: Path) -> list[Path]:
         return []
 
 
-@cache  # keyed on the newest file or folder, so a retagged slot shows on the next render
+@cache  # keyed on the newest picture, tag file or folder, so a retagged slot shows on the next render
 def _catalog(scenes_dir: Path, stamp: float) -> tuple[Scene, ...]:
     """Each usable picture, named by its path under `scenes_dir` without the suffix
     and period."""
@@ -237,8 +246,15 @@ def _catalog(scenes_dir: Path, stamp: float) -> tuple[Scene, ...]:
 
 def _scenes(scenes_dir: Path) -> tuple[Scene, ...]:
     try:
+        pictures = _pictures(scenes_dir)
         stamp = max(
-            p.stat().st_mtime for p in [scenes_dir, *scenes_dir.iterdir(), *_pictures(scenes_dir)]
+            p.stat().st_mtime
+            for p in [
+                scenes_dir,
+                *scenes_dir.iterdir(),
+                *pictures,
+                *(t for t in (p.with_suffix(".json") for p in pictures) if t.exists()),
+            ]
         )
     except (OSError, ValueError):
         return ()
@@ -293,8 +309,13 @@ def _preference(name: str, slot: int) -> int:
 
 def suits(slot: Slot, tags: frozenset[str]) -> bool:
     """Whether a plate with these pose tags can sit on the slot. A slot of no kind
-    takes any plate, and so does a plate of no tags any slot."""
-    return not slot.kind or not tags or slot.kind in tags
+    takes any plate, and a plate of no tags any slot but a flying one: the sky is
+    for plates drawn in flight."""
+    if not slot.kind:
+        return True
+    if not tags:
+        return slot.kind != FLYING
+    return slot.kind in tags
 
 
 def place(

@@ -8,7 +8,7 @@ A scene is a picture here, in this folder or in a folder inside it (which only g
 
 A page fills the screen with its picture, cropping the overflow about the middle. Slots cropped off are not used, so an odd shape has fewer places for birds. Birds beyond the slots are left off.
 
-`kind` is optional: `tree`, `bush`, `perch`, `ground` or `flying`. A slot without one takes any bird. `depth` is optional too: `foreground` (the default) or `background`. A bird on a background slot is drawn 30% less saturated, to sit back in the picture, and by day 50% brighter in the haze (20% at dusk), or at night 15% darker (`RECEDE_BRIGHTNESS` in `scene.py`). A bird's plates say what they show in dotted tags before the suffix, so `turdus-merula-2.ground.webp` is a blackbird on the ground and `turdus-merula-3.perch.tree.webp` one on a branch. Untagged plates suit every slot.
+`kind` is optional: `tree`, `bush`, `perch`, `ground` or `flying`. A slot without one takes any bird. `depth` is optional too: `foreground` (the default) or `background`. A bird on a background slot is drawn 30% less saturated, to sit back in the picture, and by day 50% brighter in the haze (20% at dusk), or at night 15% darker (`RECEDE_BRIGHTNESS` in `scene.py`). A bird's plates say what they show in dotted tags before the suffix, so `turdus-merula-2.ground.webp` is a blackbird on the ground and `turdus-merula-3.perch.tree.webp` one on a branch. Untagged plates suit every slot except `flying` ones, which only take plates tagged `.flying`.
 
 The bird is chosen first, then its slot. Each bird wears its plate of the day, picked from those the scene has a slot for, and only sits on a slot that plate suits. A bird with no such slot free is left off rather than put where its pose is wrong; if the slot it needs is held by a bird that could sit elsewhere, that one moves.
 
@@ -18,6 +18,8 @@ A scene can have a version for each part of the day, named with a tag before the
 
 A bird with a long tail hanging below its feet, or any plate whose lowest point is not where the bird stands, is planted by its feet if the style's `geometry.json` gives them: `"feet": [x, y]` in the plate's entry, as fractions of the trimmed cut-out, beside its `box` and `cut` (`assets/artwork/custom/geometry.json`). The `box` rounds the bird's body and the near part of the tail, which is what sets its size.
 
-Pick one in the admin, or with the `scene` setting: a picture's path here without the suffix (`garden/tree`), `auto` (the default) or empty for the paper. Automatic takes the picture whose shape is closest to the page's, and pictures of about the same shape take turns, one per day. With no pictures here the page is the paper. Only a collage uses scenes.
+Tick Show slots in the admin (the `scene_slots` setting) to draw each slot over the page: a dot where a bird stands, a circle as wide as its `span`, and its kind and `x`, `y` as the JSON has them, coloured by kind. It is for placing slots by eye.
+
+Pick one in the admin, or with the `scene` setting: a picture's path here without the suffix (`garden/tree`), `auto` (the default, and what empty means). Automatic takes the picture whose shape is closest to the page's, and pictures of about the same shape take turns, one per day. With no pictures here the page is the paper. Only a collage uses scenes, and not with the shipped classic artwork, which is always on paper: any other style, such as `custom`, always sits its birds on a scene.
 
 Use pictures you have the right to use. Pictures are not shipped with the repo.

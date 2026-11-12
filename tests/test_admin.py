@@ -963,10 +963,12 @@ def test_the_scene_field_appears_only_once_a_picture_exists(tmp_path):
         '{"slots": [{"x": 0.5, "y": 0.5, "span": 0.2}]}'
     )
     field = admin._scene_field(Settings(scene="garden-party/tree"), scenes)
-    assert 'value="auto"' in field and 'value="">Paper' in field and ">Tree<" in field
+    assert 'value="auto"' in field and ">Tree<" in field
     assert 'value="garden-party/tree" selected' in field
     assert 'name="scene_scale"' in field and 'value="1"' in field
     assert 'value="1.5"' in admin._scene_field(Settings(scene_scale=1.5), scenes)
+    assert 'name="scene_slots" checked' not in field
+    assert 'name="scene_slots" checked' in admin._scene_field(Settings(scene_slots=True), scenes)
     # a picture that has gone shows as the automatic choice the frame falls back to
     assert 'value="auto" selected' in admin._scene_field(Settings(scene="gone"), scenes)
     assert admin.form_changes({"scene": ["garden-party/tree"]}) == {"scene": "garden-party/tree"}

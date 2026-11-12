@@ -42,7 +42,7 @@ from ..languages import (
     station_locale,
 )
 from ..modes import MODES
-from ..names import available_styles, image_for, normalize, origin_of, source_of
+from ..names import PAPER_STYLE, available_styles, image_for, normalize, origin_of, source_of
 from ..render.collage import KEY_LIMIT, NO_LIMIT, RANKINGS
 from ..render.fonts import FONTS, LABEL_SIZES, face, load, needs_shaping
 from ..render.packing import LAYOUTS
@@ -1103,13 +1103,13 @@ def _scene_label(ident: str, idents: list[str]) -> str:
 
 
 def _scene_field(settings: Settings, scenes_dir: Path) -> str:
-    """The picture the collage sits its birds on, in place of the paper: one picked
-    each day, none, or a particular one. Offered only once a picture has been added;
-    dimmed with the layout, which a scene takes over."""
+    """The picture the collage sits its birds on: one picked each day, or a particular
+    one. Offered only once a picture has been added; dimmed with the layout, which a
+    scene takes over, and with the shipped style, which is always on paper."""
     idents = scene_names(scenes_dir)
     if not idents:
         return ""
-    options = [(AUTO, "Automatic - a new one each day"), ("", "Paper")] + [
+    options = [(AUTO, "Automatic - a new one each day")] + [
         (i, _scene_label(i, idents)) for i in idents
     ]
     # A picture that has gone is shown as what the frame falls back to.
@@ -1119,14 +1119,22 @@ def _scene_field(settings: Settings, scenes_dir: Path) -> str:
         f"{html.escape(label)}</option>"
         for value, label in options
     )
-    hint = "A picture to sit the birds on, in place of the paper. Only the collage uses one."
+    hint = "A picture to sit the birds on. Only the collage with custom artwork uses one."
+    slots_hint = "Mark where the scene tags a bird to sit, by kind, for placing the slots."
     size_hint = "How much bigger than the scene's slots give, the birds are drawn. 1 is as tagged."
     return (
         f'<div id="scene"><label><span>Scene {_hint(hint)}</span>'
         f'<select name="scene">{rows}</select></label>'
         f"<label><span>Bird scale {_hint(size_hint)}</span>"
         f'<input type="number" name="scene_scale" min="{SCENE_SCALE_MIN:g}"'
-        f' max="{SCENE_SCALE_MAX:g}" step="0.1" value="{settings.scene_scale:g}"></label></div>'
+        f' max="{SCENE_SCALE_MAX:g}" step="0.1" value="{settings.scene_scale:g}"></label>'
+        f'<input type="hidden" name="{CHECKBOXES}" value="scene_slots">'
+        + _checkbox(
+            "scene_slots",
+            f"<span>Show slots {_hint(slots_hint)}</span>",
+            settings.scene_slots,
+        )
+        + "</div>"
     )
 
 
@@ -1184,6 +1192,7 @@ def page(
                 "kind": settings.detector_kind,
                 "version": __version__,
                 "passwordSet": PASSWORD_SET,
+                "paperStyle": PAPER_STYLE,  # which style has no scene
                 "windowedModes": [k for k, m in MODES.items() if m.windowed],
                 "keyLimit": KEY_LIMIT,
                 "webHeights": WEB_HEIGHTS,  # so the Resolution labels follow the form

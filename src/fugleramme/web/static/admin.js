@@ -528,7 +528,8 @@ function syncMode() {
   dim(lookback, on);
   dim(limit, on);
   dim(layout, on);
-  if (scene) dim(scene, on);
+  const paper = form.querySelector("input[name=style]:checked")?.value === cfg.paperStyle;
+  if (scene) dim(scene, on && !paper);
   // Nothing to rank while every bird the window heard is already on the page.
   const capped = form.querySelector("input[name=limit_mode]:checked")?.value === "some";
   form.querySelector("input[name=species_limit]").disabled = !(on && capped);  // after dim(limit)

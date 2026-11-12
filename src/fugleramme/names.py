@@ -47,6 +47,8 @@ MANIFEST = "manifest.json"  # a style's record: "<file>.webp" -> {"source", "url
 ALIASES = REPO_ROOT / "assets" / "birdnet_aliases.json"
 
 # What a bird in a plate is doing, and what a scene slot offers it.
+# The shipped style: always on paper. Any other style sits its birds on a scene.
+PAPER_STYLE = "classic"
 KINDS = ("tree", "bush", "perch", "ground", "flying")
 
 # Preference order. Anything added must be a format PIL opens and `dither` can quantize.
@@ -117,7 +119,7 @@ def _base(stem: str) -> str:
 
 
 def tags_of(path: Path) -> frozenset[str]:
-    """The poses a file's name gives it. Empty is untagged, which suits any slot."""
+    """The poses a file's name gives it. Empty is untagged, which suits any slot but a flying one."""
     return frozenset(t for t in path.stem.split(".")[1:] if t in KINDS)
 
 
@@ -226,12 +228,14 @@ def choose(
     variants the same way forever. blake2b, as hash() is salted per process.
 
     `kinds` are the slots a scene offers: the pick is among the variants that
-    have one to sit on, untagged ones counting as suiting every slot. If none do,
+    have one to sit on, untagged ones counting as suiting every slot but a flying one. If none do,
     it is among them all, and the scene leaves the bird off.
     """
     pool = variants
     if kinds is not None:
-        pool = [p for p in variants if not tags_of(p) or tags_of(p) & kinds] or variants
+        pool = [
+            p for p in variants if tags_of(p) & kinds or (not tags_of(p) and kinds - {"flying"})
+        ] or variants
     if not pool:
         return None
     seed = hashlib.blake2b(f"{scientific_name}/{day}".encode(), digest_size=4).digest()

@@ -57,7 +57,7 @@ from .page import (
     trim,
 )
 from .paper import PAD, process_sprite
-from .scene import BACKGROUND, Scene, grade, place, recede
+from .scene import BACKGROUND, FLYING, Scene, Slot, grade, place, recede
 from .sizes import SIZE_EXPONENT, bird_centre, feet_of, mass_of, span_ratio
 
 log = logging.getLogger(__name__)
@@ -437,6 +437,7 @@ def render_collage(
     variants: Callable[[str], list[Path]] | None = None,
     copies: Mapping[str, int] | None = None,
     scene_scale: float = 1.0,
+    scene_slots: bool = False,
 ) -> Image.Image:
     """Composite the given (name, image) entries into a tightly packed collage.
 
@@ -454,11 +455,18 @@ def render_collage(
     copies: how many of a species a scene seats, one where it is not named. A species'
         extra birds only take slots left once every species has one.
     scene_scale: how many times the span its slots give a scene draws its birds.
+    scene_slots: mark each of the scene's slots over the birds.
     """
     kept = [(name, path) for name, path in entries if path is not None]
     if scene:
         return _draw_scene(
-            scene.background(resolution), kept, scene, variants, copies or {}, scene_scale
+            scene.background(resolution),
+            kept,
+            scene,
+            variants,
+            copies or {},
+            scene_scale,
+            scene_slots,
         )
 
     canvas = blank(resolution, textured)
@@ -590,6 +598,7 @@ def _draw_scene(
     variants: Callable[[str], list[Path]] | None,
     copies: Mapping[str, int],
     scale: float,
+    show_slots: bool = False,
 ) -> Image.Image:
     """Each bird on a slot its plate suits, sized by mass up to what the slot
     allows, facing the middle of the page. The plate is picked first, from those the
@@ -598,7 +607,7 @@ def _draw_scene(
     in front."""
     slots = scene.slots_on(canvas.size, scale)
     if not kept or not slots:
-        return canvas
+        return _mark_slots(canvas, scene, slots) if show_slots else canvas
     species = [name for name, _ in kept]
     weight = dict(zip(species, _size_weights(species), strict=True))
     birds = [(name, path, n) for name, path in kept for n in range(copies.get(name, 1))]
@@ -620,6 +629,27 @@ def _draw_scene(
     # Every species' first bird is seated before anyone's second.
     keys = [f"{n}/{name}" for name, _, n in birds]
     perches = place(slots, canvas.size, keys, spans, [tags_of(path) for path in plates])
+    # A flying slot only takes a flying plate, so a bird with one to wear takes it
+    # while a flying slot is empty: first a bird that would be left off, then the
+    # birds in name order.
+    sky = sum(s.kind == FLYING for s in slots)
+    flyers = [
+        [p for p in (variants(name) if variants else []) if FLYING in tags_of(p)]
+        for name, _, _ in birds
+    ]
+    while sum(FLYING in tags_of(plates[p.bird]) for p in perches) < sky:
+        seated = {p.bird for p in perches}
+        movable = [
+            i
+            for i in sorted(range(len(birds)), key=lambda i: (i in seated, keys[i]))
+            if flyers[i] and FLYING not in tags_of(plates[i])
+        ]
+        if not movable:
+            break
+        i = movable[0]
+        name, _, n = birds[i]
+        plates[i] = choose(flyers[i], name if n == 0 else f"{name}#{n}", day_ordinal()) or plates[i]
+        perches = place(slots, canvas.size, keys, spans, [tags_of(path) for path in plates])
     for perch in sorted(perches, key=lambda p: p.feet[1]):
         i = perch.bird
         art = trim(plates[i])
@@ -633,12 +663,46 @@ def _draw_scene(
         foot_x, bottom = _planted(bird, plates[i], art.size, face_left)
         x = round(perch.feet[0] - foot_x)
         y = round(perch.feet[1] - bottom + perch.sink * bird.height)
-        # a bird near an edge slides back on rather than being cut off
-        at = (
-            min(max(0, x), max(0, canvas.width - bird.width)),
-            min(max(0, y), max(0, canvas.height - bird.height)),
+        # A bird near the top or bottom slides back on rather than lose its head or
+        # feet; one at a side stays on its slot and is cropped, not slid onto thin air.
+        y = min(max(0, y), max(0, canvas.height - bird.height))
+        canvas.paste(bird, (x, y), bird)
+    return _mark_slots(canvas, scene, slots) if show_slots else canvas
+
+
+_SLOT_COLORS = {
+    "tree": (0, 160, 60),
+    "bush": (200, 40, 160),
+    "perch": (230, 120, 0),
+    "ground": (150, 90, 30),
+    "flying": (0, 110, 230),
+}
+
+
+def _mark_slots(canvas: Image.Image, scene: Scene, slots: Sequence[Slot]) -> Image.Image:
+    """Each slot as a dot where a bird stands, a circle as wide as its span, and its
+    kind and its x, y on the picture as the JSON has them, coloured by kind. For placing
+    slots by eye."""
+    draw = ImageDraw.Draw(canvas)
+    short = min(canvas.size)
+    font = ImageFont.load_default(max(10, short // 50))
+    dot = max(3, short // 150)
+    for s in slots:
+        x, y = s.x * canvas.width, s.y * canvas.height
+        color = _SLOT_COLORS.get(s.kind, (120, 120, 120))
+        r = s.span * short / 2
+        draw.ellipse((x - r, y - r, x + r, y + r), outline=color, width=max(1, dot // 2))
+        draw.ellipse((x - dot, y - dot, x + dot, y + dot), fill=color, outline=(255, 255, 255))
+        px, py = scene.in_picture(canvas.size, s)
+        label = f"{s.kind or 'any'} {px:.3f}, {py:.3f}"
+        draw.text(
+            (x + dot * 2, y - dot * 2),
+            label,
+            fill=color,
+            font=font,
+            stroke_width=2,
+            stroke_fill=(255, 255, 255),
         )
-        canvas.paste(bird, at, bird)
     return canvas
 
 

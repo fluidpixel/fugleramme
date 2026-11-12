@@ -27,7 +27,15 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 from .languages import STATION, Drawable, Namer, english_name, station_locale
-from .names import drawable_keys, image_for, normalize, perches_for, resolve, variants_for
+from .names import (
+    PAPER_STYLE,
+    drawable_keys,
+    image_for,
+    normalize,
+    perches_for,
+    resolve,
+    variants_for,
+)
 from .render import fonts
 from .render.collage import (
     KEY_LIMIT,
@@ -39,7 +47,7 @@ from .render.collage import (
 )
 from .render.page import NEW, Edges, day_ordinal
 from .render.plate import effective_margin, render_plate
-from .render.scene import Scene, pick
+from .render.scene import AUTO, Scene, pick
 from .source import Source, Species
 
 if TYPE_CHECKING:
@@ -78,6 +86,7 @@ class Context:
     textured: bool = True
     scene: Scene | None = None  # the picture the collage sits on, if any
     scene_scale: float = 1.0
+    scene_slots: bool = False
 
     def perches(self):
         return perches_for(self.images_dir, self.style)
@@ -99,11 +108,12 @@ def context(
 ) -> Context:
     """`panel`: the page is the panel's or follows it, and takes its edges."""
     keyed = settings.show_names and settings.name_key
+    style = resolve(settings.style, images_dir)
     return Context(
         mode=settings.mode,
         source=source,
         images_dir=images_dir,
-        style=resolve(settings.style, images_dir),
+        style=style,
         day=day_ordinal(),
         namer=namer,
         resolution=resolution,
@@ -119,8 +129,12 @@ def context(
         margin=Edges(*(m / 100 for m in settings.margins(panel))),
         textured=textured,
         scene_scale=settings.scene_scale,
-        scene=pick(
-            settings.scene,
+        scene_slots=settings.scene_slots,
+        # The shipped style is paper; any other is a scene, never paper.
+        scene=None
+        if style == PAPER_STYLE
+        else pick(
+            settings.scene or AUTO,
             images_dir.parent / "scenes",
             resolution,
             day_ordinal(),
@@ -274,6 +288,7 @@ def _collage(ctx: Context) -> Image.Image:
         lambda name: variants_for(name, ctx.images_dir, ctx.style),
         _copies(ctx),
         ctx.scene_scale,
+        ctx.scene_slots,
     )
 
 
@@ -385,8 +400,10 @@ def state_key(ctx: Context) -> tuple:
         ctx.font_key,
         ctx.label_size,
         ctx.layout if mode.windowed else None,
-        ctx.scene.path if ctx.scene and mode.windowed else None,
+        # The slots too, so retagging a picture repaints the page.
+        (ctx.scene.path, ctx.scene.slots) if ctx.scene and mode.windowed else None,
         ctx.scene_scale if ctx.scene and mode.windowed else None,
+        ctx.scene_slots if ctx.scene and mode.windowed else None,
         ctx.name_key if mode.windowed else None,
         # The plate clamps to its own margin, so a nudge under it must not repaint.
         ctx.margin if mode.windowed else effective_margin(ctx.margin),

@@ -1,11 +1,12 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
-from fugleramme.render.collage import copies_for
-from fugleramme.render.scene import AUTO, Slot, grade, names, period_at, pick, place, recede
+from fugleramme.render.collage import copies_for, render_collage
+from fugleramme.render.scene import AUTO, Scene, Slot, grade, names, period_at, pick, place, recede
 from fugleramme.render.sizes import feet_of
 
 
@@ -85,11 +86,12 @@ def test_bird_with_no_slot_for_its_pose_is_left_off():
     assert place(slots, (1000, 1000), ["a"], [100.0], [frozenset({"ground"})]) == []
 
 
-def test_a_plate_that_sits_anywhere_makes_way_for_one_that_needs_the_slot():
+def test_an_untagged_plate_never_takes_a_flying_slot():
     slots = (Slot(0.2, 0.5, 0.2, "flying"), Slot(0.8, 0.5, 0.2, "ground"))
     tags = [frozenset(), frozenset({"flying"})]
     perches = place(slots, (1000, 1000), ["x", "y"], [100.0, 100.0], tags)
     assert {p.bird: p.feet[0] for p in perches} == {0: 800, 1: 200}
+    assert place(slots[:1], (1000, 1000), ["x"], [100.0], [frozenset()]) == []
 
 
 def test_unknown_slot_kind_voids_the_picture(tmp_path):
@@ -182,6 +184,27 @@ def test_scene_scale_multiplies_the_span_of_every_slot(tmp_path):
     assert one_and_a_half == pytest.approx(one * 1.5)
 
 
+def test_show_slots_marks_each_slot_even_with_no_birds(tmp_path):
+    _set(tmp_path, "a", (160, 90), [{"x": 0.5, "y": 0.5, "span": 0.2, "kind": "tree"}])
+    scene = pick(AUTO, tmp_path, (160, 90), 0, 12)
+    plain = render_collage([], (160, 90), scene=scene)
+    marked = render_collage([], (160, 90), scene=scene, scene_slots=True)
+    assert plain.tobytes() != marked.tobytes()
+    assert marked.getpixel((80, 45)) != plain.getpixel((80, 45))
+
+
+def test_retagging_a_picture_in_place_is_seen_on_the_next_look(tmp_path):
+    folder = tmp_path / "s"
+    _set(folder, "a", (160, 90), [{"x": 0.5, "y": 0.5, "span": 0.2}])
+    assert pick(AUTO, tmp_path, (160, 90), 0, 12).slots[0].x == 0.5
+    tags = folder / "a.json"
+    folder_time = folder.stat().st_mtime
+    tags.write_text(json.dumps({"slots": [{"x": 0.25, "y": 0.5, "span": 0.2}]}))
+    os.utime(tags, (folder_time + 10, folder_time + 10))  # an in-place write moves no folder
+    os.utime(folder, (folder_time, folder_time))
+    assert pick(AUTO, tmp_path, (160, 90), 0, 12).slots[0].x == 0.25
+
+
 def test_the_day_is_cut_into_its_parts_at_the_hours_they_start():
     hours = {0: "night", 4: "night", 5: "morning", 9: "morning", 10: "day", 15: "day"}
     hours |= {16: "dusk", 18: "dusk", 19: "night", 23: "night"}
@@ -210,3 +233,22 @@ def test_a_slot_size_scales_the_bird_on_it_and_is_checked(tmp_path):
     assert perch.span == pytest.approx(70.0)
     _set(tmp_path / "t", "a", (160, 90), [{"x": 0.5, "y": 0.5, "span": 0.2, "size": 0}])
     assert pick(AUTO, tmp_path / "t", (1920, 1080), 0, 12) is None
+
+
+def test_a_bird_with_a_flying_plate_takes_the_empty_flying_slot(tmp_path):
+    def plate(name: str) -> Path:
+        path = tmp_path / name
+        Image.new("RGBA", (40, 40), (200, 30, 30, 255)).save(path)
+        return path
+
+    perched, flying = plate("turdus-merula-1.ground.png"), plate("turdus-merula-2.flying.png")
+    slots = (Slot(0.5, 0.2, 0.2, "flying"), Slot(0.5, 0.9, 0.2, "ground"))
+    scene = Scene(tmp_path / "s.png", (100, 100), slots, "s")
+    Image.new("RGB", (100, 100), (255, 255, 255)).save(scene.path)
+    # Whichever plate the day picks, the one bird goes to the sky: it was the only
+    # one that could, and the ground is left bare.
+    for species in ("Turdus merula", "Parus major", "Pica pica", "Corvus corax"):
+        page = render_collage(
+            [(species, perched)], (100, 100), scene=scene, variants=lambda _n: [perched, flying]
+        )
+        assert page.getpixel((50, 15)) != (255, 255, 255), species
