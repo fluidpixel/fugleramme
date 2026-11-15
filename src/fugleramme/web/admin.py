@@ -400,9 +400,9 @@ def _species_li(scientific: str, label: str, source: str | None, url: str) -> st
 
 def _named(scientific: str, name_of: Namer) -> str:
     """The name in the configured language, then the scientific one in brackets,
-    unless the name is the scientific one already."""
+    unless a language already shows it."""
     label = name_of.inline(scientific)
-    return label if label == scientific else f"{label} ({html.escape(scientific)})"
+    return label if scientific in label else f"{label} ({html.escape(scientific)})"
 
 
 def species_html(species: list[tuple[str, str | None, str]], name_of: Namer) -> str:

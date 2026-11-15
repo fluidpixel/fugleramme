@@ -90,6 +90,10 @@ def test_a_listed_species_is_named_in_the_language_then_in_latin(tmp_path):
     assert ">Corvus cornix</a>" in html  # no name in the language, so no repeat
     latin = namer("sci", "", tmp_path)
     assert ">Pica pica</a>" in admin.species_html([("Pica pica", "gould", "")], latin)
+    both = languages.Namer("en", "sci", {"en": {"Pica pica": "eurasian magpie"}}, ())
+    assert ">Eurasian magpie (Pica pica)</a>" in admin.species_html(
+        [("Pica pica", "gould", "")], both
+    )
 
 
 def test_a_species_with_no_artwork_is_marked_rather_than_dropped(tmp_path):
