@@ -440,9 +440,9 @@ def subjects(ctx: Context) -> list[str]:
     return mode_of(ctx.mode).subjects(ctx)
 
 
-# A page per state: the kiosk and the traditional collage alternate, and one slot
+# A page per state: the kiosk, the traditional collage and the latest bird alternate, and one slot
 # would have each re-render the other's.
-_CACHED_PAGES = 4
+_CACHED_PAGES = 6
 _cache: dict[tuple, bytes] = {}
 _cache_lock = threading.Lock()
 

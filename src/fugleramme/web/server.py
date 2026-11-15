@@ -41,7 +41,7 @@ from typing import ClassVar
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from .. import __version__, buttons, e6, modes, updates, wifi
-from ..languages import namer
+from ..languages import SCIENTIFIC, STATION, namer
 from ..panel import Panel, resolution_of, to_glass
 from ..render.fonts import cut
 from ..render.paper import paper_tile
@@ -413,6 +413,20 @@ def make_handler(
             settings = replace(store.get(), style="classic", scene="")
             self._send_cached(modes.png_bytes(self._context(settings)), "image/png")
 
+        def _latest_png(self):
+            """The latest bird in the classic plate, named in the station's language
+            and then in Latin, whatever the settings say of mode, names and style."""
+            settings = replace(
+                store.get(),
+                mode="latest",
+                style="classic",
+                scene="",
+                show_names=True,
+                primary_language=STATION,
+                secondary_language=SCIENTIFIC,
+            )
+            self._send_cached(modes.png_bytes(self._context(settings)), "image/png")
+
         def _preview_png(self):
             # The panel's page where there is one, else the kiosk's.
             settings = replace(self._edited(), web_lock=True)
@@ -520,6 +534,7 @@ def make_handler(
         ROUTES: ClassVar[dict] = {
             "/collage.png": _page_png,
             "/collage-traditional.png": _traditional_png,
+            "/latest.png": _latest_png,
             "/frame.e6": _e6,
             "/frame.png": _frame_png,
             "/preview.png": _preview_png,
