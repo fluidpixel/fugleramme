@@ -58,6 +58,22 @@ def test_cover_crops_and_drops_slots_off_the_page(tmp_path):
     assert kept.span > 0.2
 
 
+def test_focus_chooses_which_part_of_a_wide_picture_a_square_page_keeps(tmp_path):
+    slots = [{"x": 0.2, "y": 0.5, "span": 0.2}, {"x": 0.8, "y": 0.5, "span": 0.2}]
+    _set(tmp_path / "s", "a", (160, 90), slots)
+    tags = tmp_path / "s" / "a.json"
+    scene = pick(AUTO, tmp_path, (90, 90), 0, 12)
+    assert len(scene.slots_on((90, 90))) == 0  # the middle holds neither edge's slot
+    for focus, kept in ((0.0, 0.2), (1.0, 0.8)):
+        tags.write_text(json.dumps({"slots": slots, "focus": {"x": focus}}))
+        scene = pick(AUTO, tmp_path, (90, 90), 0, 12)
+        (slot,) = scene.slots_on((90, 90))
+        assert scene.focus == (focus, 0.5)
+        assert slot.x == pytest.approx((kept * 160 - focus * 70) / 90)
+    tags.write_text(json.dumps({"slots": slots, "focus": {"x": 2}}))
+    assert pick(AUTO, tmp_path, (90, 90), 0, 12).focus == (0.5, 0.5)
+
+
 def test_place_is_stable_and_leaves_extras_off():
     slots = tuple(Slot(i / 10, 0.5, 0.2) for i in range(1, 4))
     names = ["d", "a", "c", "b"]

@@ -27,6 +27,7 @@ WEB_ASPECTS: dict[str, tuple[int, int]] = {
     "16:10": (16, 10),
     "4:3": (4, 3),
     "3:2": (3, 2),
+    "1:1": (1, 1),  # a HomeKit tile or a phone widget
 }
 
 # The fallback panel's shape: what a panel-less kiosk packs unless told otherwise.

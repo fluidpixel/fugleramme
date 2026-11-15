@@ -9,8 +9,9 @@ slots:
 `x` and `y` are where a bird's feet land, as fractions of the picture; `span` is
 the most of the picture's short side a bird sitting there may take, and the optional
 `size` how much of its size a bird keeps there (0.7 for a spot further back). A page fills
-with the picture it is given, cropping the overflow about the middle; slots cropped
-off are not used. Left to `AUTO`, it takes the picture whose shape is closest to its
+with the picture it is given, cropping the overflow about its `focus` (the middle,
+unless the JSON has `"focus": {"x": 0.3, "y": 0.5}`, the fractions of the overflow
+cropped from the left and top); slots cropped off are not used. Left to `AUTO`, it takes the picture whose shape is closest to its
 own, and pictures within `ASPECT_TOLERANCE` of the closest one take turns, one per day.
 
 Nothing is packed. A bird goes on a slot, so there are no collision masks and
@@ -76,6 +77,7 @@ class Scene:
     slots: tuple[Slot, ...]
     ident: str  # its path under the scenes folder, without the suffix or period
     period: str = ""  # of the day it is drawn for, one of `PERIODS`; empty for any
+    focus: tuple[float, float] = (0.5, 0.5)  # where a page too narrow or short crops
 
     def _cover(self, page: tuple[int, int]) -> tuple[float, float, float]:
         """The scale that fills `page` with the picture, and the pixels cropped
@@ -83,8 +85,8 @@ class Scene:
         scale = max(page[0] / self.size[0], page[1] / self.size[1])
         return (
             scale,
-            (self.size[0] * scale - page[0]) / 2,
-            (self.size[1] * scale - page[1]) / 2,
+            (self.size[0] * scale - page[0]) * self.focus[0],
+            (self.size[1] * scale - page[1]) * self.focus[1],
         )
 
     def background(self, page: tuple[int, int]) -> Image.Image:
@@ -172,12 +174,27 @@ class Perch(NamedTuple):
     sink: float  # of the slot
 
 
-def _slots(path: Path) -> tuple[Slot, ...] | None:
-    """The slots tagged beside a picture, or None if there are none worth using. A
-    time-of-day variant without a file of its own shares its scene's."""
+def _tag_file(path: Path) -> Path:
+    """The JSON beside a picture. A time-of-day variant without a file of its own
+    shares its scene's."""
     tags = path.with_suffix(".json")
-    if not tags.exists():
-        tags = path.with_name(_split(path.stem)[0] + ".json")
+    return tags if tags.exists() else path.with_name(_split(path.stem)[0] + ".json")
+
+
+def _focus(path: Path) -> tuple[float, float]:
+    """Where the picture crops for a page of another shape: the middle, unless its
+    JSON has a `focus` of `x` and `y` between 0 (crop the right and bottom) and 1."""
+    try:
+        raw = json.loads(_tag_file(path).read_text()).get("focus", {})
+        focus = (float(raw.get("x", 0.5)), float(raw.get("y", 0.5)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return (0.5, 0.5)
+    return focus if all(0 <= f <= 1 for f in focus) else (0.5, 0.5)
+
+
+def _slots(path: Path) -> tuple[Slot, ...] | None:
+    """The slots tagged beside a picture, or None if there are none worth using."""
+    tags = _tag_file(path)
     try:
         raw = json.loads(tags.read_text())["slots"]
         slots = tuple(
@@ -240,7 +257,7 @@ def _catalog(scenes_dir: Path, stamp: float) -> tuple[Scene, ...]:
         name, period = _split(path.stem)
         ident = path.relative_to(scenes_dir).with_name(name).as_posix()
         with Image.open(path) as image:
-            found.append(Scene(path, image.size, slots, ident, period))
+            found.append(Scene(path, image.size, slots, ident, period, _focus(path)))
     return tuple(found)
 
 

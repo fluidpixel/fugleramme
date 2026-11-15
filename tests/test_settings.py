@@ -254,6 +254,11 @@ def test_the_kiosk_takes_its_shape_from_the_panel_and_only_its_height_from_the_s
     assert Settings(web_resolution="1080p").web_size((1600, 1200)) == (1440, 1080)
 
 
+def test_the_kiosk_can_be_square():
+    square = Settings(web_lock=False, web_aspect="1:1", web_resolution="1080p")
+    assert square.web_size(None) == (1080, 1080)
+
+
 def test_rotation_turns_the_kiosk_render_without_shrinking_it():
     """Sizing after the turn would spend 44% fewer pixels on a portrait frame
     for the same setting."""
